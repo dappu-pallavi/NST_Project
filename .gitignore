@@ -1,0 +1,14 @@
+# Ignore macOS system files
+.DS_Store
+**/.DS_Store
+
+# Ignore Python bytecode directories
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Ignore the local virtual environment
+.venv/
+
+# Ignore user uploads and generated results (created at runtime)
+NST_Code/runtime/

@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<title>Neural Style Transfer Studio</title>
+<meta name="description" content="Upload a photo and an artwork, and redraw the photo in that artistic style using AdaIN neural style transfer.">
+<style>
+    :root {
+        color-scheme: light dark;  /* native scrollbars and controls follow the theme */
+        --bg: #f6f7fb;
+        --surface: #ffffff;
+        --surface-2: #f0f2f8;
+        --text: #1b1f2e;
+        --muted: #5d647a;
+        --border: #dfe3ee;
+        --accent: #5b4fe0;
+        --accent-strong: #4a3fd0;
+        --accent-soft: #ecebfd;
+        --danger: #b42318;
+        --danger-soft: #fef3f2;
+        --success: #067647;
+        --radius: 14px;
+        --shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 16px rgba(16, 24, 40, .06);
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg: #0f1117;
+            --surface: #171a23;
+            --surface-2: #1f2330;
+            --text: #e8eaf2;
+            --muted: #9aa1b5;
+            --border: #2b3040;
+            --accent: #8b80ff;
+            --accent-strong: #a29aff;
+            --accent-soft: #24223f;
+            --danger: #ff8a7a;
+            --danger-soft: #2c1714;
+            --success: #47cd89;
+            --shadow: none;
+        }
+    }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+    }
+    a { color: var(--accent); }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+
+    /* Header & hero */
+    .topbar { border-bottom: 1px solid var(--border); background: var(--surface); }
+    .topbar .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 12px; }
+    .brand { font-weight: 700; letter-spacing: -.01em; display: flex; align-items: center; gap: 10px; }
+    .brand-mark {
+        width: 28px; height: 28px; border-radius: 8px; flex: none;
+        background: conic-gradient(from 200deg, #5b4fe0, #c04fd8, #f08a4b, #5b4fe0);
+    }
+    .topbar nav a { color: var(--muted); text-decoration: none; font-size: .95rem; }
+    .topbar nav a:hover { color: var(--text); }
+    .hero { padding: 44px 0 28px; }
+    .hero h1 { font-size: clamp(1.8rem, 3.5vw, 2.6rem); line-height: 1.15; margin: 0 0 12px; letter-spacing: -.02em; }
+    .hero p { color: var(--muted); max-width: 720px; margin: 0; font-size: 1.05rem; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+    .chip { font-size: .8rem; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+
+    /* Cards */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; min-width: 0; }
+    .card h2 { font-size: 1.05rem; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+    .step { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: .8rem; display: inline-grid; place-items: center; flex: none; }
+    .hint { color: var(--muted); font-size: .9rem; margin: 0 0 14px; }
+
+    /* Drop zone */
+    .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .dropzone {
+        position: relative; display: grid; place-items: center; text-align: center;
+        height: 280px; border: 2px dashed var(--border); border-radius: 12px; background: var(--surface-2);
+        cursor: pointer; overflow: hidden; transition: border-color .15s, background .15s;
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: var(--accent-soft); }
+    input[type=file]:focus-visible + .dropzone { outline: 3px solid var(--accent); outline-offset: 2px; }
+    .dropzone img { width: 100%; height: 100%; object-fit: contain; display: none; }
+    .dropzone.has-image img { display: block; }
+    .dropzone.has-image .placeholder { display: none; }
+    .placeholder { color: var(--muted); padding: 16px; }
+    .placeholder strong { color: var(--text); display: block; margin: 8px 0 2px; }
+    .placeholder svg { opacity: .7; }
+    .selection { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 34px; margin-top: 8px; font-size: .88rem; color: var(--muted); }
+    .selection span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .link-btn { background: none; border: 0; color: var(--accent); cursor: pointer; font: inherit; padding: 4px; }
+
+    /* Sample gallery */
+    .gallery-label { font-size: .85rem; font-weight: 600; margin: 10px 0 8px; color: var(--muted); }
+    .gallery { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; }
+    .thumb {
+        flex: none; width: 76px; padding: 0; border: 2px solid transparent; border-radius: 10px;
+        background: none; cursor: pointer; scroll-snap-align: start; color: var(--muted);
+    }
+    .thumb img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; display: block; background: var(--surface-2); }
+    .thumb span { display: block; font-size: .68rem; line-height: 1.2; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .thumb:hover { border-color: var(--border); }
+    .thumb[aria-pressed="true"] { border-color: var(--accent); color: var(--text); }
+    .thumb:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+
+    /* Controls */
+    .controls { margin-top: 20px; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: center; }
+    .slider-head { display: flex; justify-content: space-between; align-items: baseline; }
+    .slider-head output { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent-strong); }
+    input[type=range] { width: 100%; accent-color: var(--accent); margin: 10px 0 2px; }
+    .scale { display: flex; justify-content: space-between; font-size: .8rem; color: var(--muted); }
+    .btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+        border: 0; border-radius: 10px; padding: 14px 26px; font: inherit; font-weight: 650; cursor: pointer;
+        text-decoration: none; transition: background .15s, opacity .15s;
+    }
+    .btn-primary { background: var(--accent); color: #fff; min-width: 230px; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
+    .btn:disabled { opacity: .6; cursor: progress; }
+    .btn-secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .spinner { width: 18px; height: 18px; border: 2.5px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; display: none; }
+    .busy .spinner { display: inline-block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status { font-size: .88rem; color: var(--muted); margin-top: 8px; text-align: center; min-height: 1.4em; }
+
+    .alert { margin-top: 18px; padding: 12px 16px; border-radius: 10px; background: var(--danger-soft); color: var(--danger); border: 1px solid currentColor; display: none; }
+    .alert.show { display: block; }
+
+    /* Result */
+    #result { margin-top: 28px; display: none; }
+    #result.show { display: block; }
+    .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    figure { margin: 0; }
+    figure img { width: 100%; height: 380px; object-fit: contain; background: var(--surface-2); border-radius: 10px; display: block; }
+    figcaption { font-size: .85rem; color: var(--muted); margin-top: 6px; font-weight: 600; }
+    .style-inset { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: .88rem; color: var(--muted); }
+    .style-inset img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; }
+    .result-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .meta { font-size: .88rem; color: var(--muted); }
+    .meta b { color: var(--success); }
+
+    /* How it works */
+    .section-title { font-size: 1.35rem; margin: 48px 0 6px; letter-spacing: -.01em; }
+    .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 16px; counter-reset: stage; }
+    .pipeline .card { padding: 16px; }
+    .pipeline h3 { font-size: .98rem; margin: 0 0 6px; }
+    .pipeline p { font-size: .9rem; color: var(--muted); margin: 0; }
+    .formula { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: .85rem; background: var(--surface-2); padding: 2px 6px; border-radius: 6px; }
+    .notes { color: var(--muted); font-size: .92rem; margin-top: 14px; }
+
+    footer { margin-top: 56px; padding: 24px 0 36px; border-top: 1px solid var(--border); color: var(--muted); font-size: .88rem; }
+
+    @media (max-width: 860px) {
+        .pipeline { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 720px) {
+        .grid-2, .compare, .controls { grid-template-columns: 1fr; }
+        .btn-primary { width: 100%; }
+        .dropzone { height: 220px; }
+        figure img { height: 300px; }
+        .topbar nav { display: none; }
+    }
+    @media (max-width: 480px) {
+        .pipeline { grid-template-columns: 1fr; }
+        .wrap { padding: 0 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; animation-duration: 1.5s !important; }
+    }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+    <div class="wrap">
+        <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Neural Style Transfer Studio</div>
+        <nav><a href="#how-it-works">How it works</a></nav>
+    </div>
+</header>
+
+<main class="wrap">
+    <section class="hero">
+        <h1>Repaint any photo in the style of an artwork</h1>
+        <p>
+            Neural Style Transfer uses a deep neural network to separate <em>what</em> an image shows (its content)
+            from <em>how</em> it is painted (its style), then recombines the content of your photo with the style
+            of a painting. This studio uses the AdaIN method, which needs only one forward pass of the network,
+            so a result takes about a second or two.
+        </p>
+        <div class="chips">
+            <span class="chip">AdaIN</span><span class="chip">VGG-19 encoder</span>
+            <span class="chip">PyTorch</span><span class="chip">Flask</span>
+            <span class="chip">Running on {{ device }}</span>
+        </div>
+    </section>
+
+    <form id="studio" novalidate>
+        <div class="grid-2">
+            {% for kind, step, title, hint in [
+                ('content', 1, 'Content image', 'The photo you want to transform. Its shapes and layout are kept.'),
+                ('style', 2, 'Style image', 'The artwork whose colours, textures and brush strokes are applied.')] %}
+            <section class="card" aria-labelledby="{{ kind }}-title">
+                <h2 id="{{ kind }}-title"><span class="step">{{ step }}</span>{{ title }}</h2>
+                <p class="hint">{{ hint }}</p>
+
+                <input class="visually-hidden" type="file" id="{{ kind }}-input" accept="image/png,image/jpeg"
+                       aria-describedby="{{ kind }}-help">
+                <label class="dropzone" for="{{ kind }}-input" id="{{ kind }}-drop">
+                    <img id="{{ kind }}-preview" alt="{{ title }} preview">
+                    <span class="placeholder">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg>
+                        <strong>Drop an image here or click to browse</strong>
+                        <span id="{{ kind }}-help">PNG or JPG, up to {{ max_upload_mb }} MB in total</span>
+                    </span>
+                </label>
+                <div class="selection">
+                    <span id="{{ kind }}-name">No image selected</span>
+                    <button type="button" class="link-btn" id="{{ kind }}-clear" hidden>Clear</button>
+                </div>
+
+                <div class="gallery-label" id="{{ kind }}-gallery-label">Or choose a sample</div>
+                <div class="gallery" role="group" aria-labelledby="{{ kind }}-gallery-label">
+                    {% for preset in presets[kind] %}
+                    <button type="button" class="thumb" data-kind="{{ kind }}" data-name="{{ preset.name }}"
+                            aria-pressed="false" title="{{ preset.label }}">
+                        <img src="{{ url_for('send_preset_thumb', kind=kind, name=preset.name) }}" alt="" loading="lazy">
+                        <span>{{ preset.label }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+
+        <section class="card controls" aria-label="Generate">
+            <div>
+                <div class="slider-head">
+                    <label for="alpha"><span class="step">3</span>&nbsp; Style strength</label>
+                    <output id="alpha-value" for="alpha">1.00</output>
+                </div>
+                <input type="range" id="alpha" min="0" max="1" step="0.05" value="1">
+                <div class="scale"><span>0 · original content</span><span>1 · full style</span></div>
+            </div>
+            <div>
+                <button type="submit" class="btn btn-primary" id="generate">
+                    <span class="spinner" aria-hidden="true"></span><span id="generate-label">Generate Style Transfer</span>
+                </button>
+                <div class="status" id="status" role="status" aria-live="polite"></div>
+            </div>
+        </section>
+
+        <div class="alert" id="error" role="alert"></div>
+    </form>
+
+    <section id="result" class="card" aria-labelledby="result-title">
+        <h2 id="result-title">Result</h2>
+        <div class="compare">
+            <figure>
+                <img id="result-content" alt="Content image">
+                <figcaption>Original content</figcaption>
+            </figure>
+            <figure>
+                <img id="result-output" alt="Stylized result generated by the model">
+                <figcaption>Stylized result</figcaption>
+            </figure>
+        </div>
+        <div class="style-inset"><img id="result-style" alt="Style image used"><span>Style applied</span></div>
+        <div class="result-bar">
+            <div class="meta" id="result-meta"></div>
+            <a class="btn btn-secondary" id="download" href="#" download>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                Download result
+            </a>
+        </div>
+    </section>
+
+    <h2 class="section-title" id="how-it-works">How it works</h2>
+    <p class="hint">Arbitrary style transfer with Adaptive Instance Normalization (Huang &amp; Belongie, ICCV 2017).</p>
+    <div class="pipeline">
+        <div class="card">
+            <h3>1. Encode</h3>
+            <p>Both images are resized so the shorter side is {{ processing_size }} px and passed through a pretrained
+               VGG-19 network up to layer <span class="formula">relu4_1</span>, giving 512 feature maps each.</p>
+        </div>
+        <div class="card">
+            <h3>2. Match statistics</h3>
+            <p>AdaIN normalizes each content feature map and re-scales it with the style's mean and standard deviation:
+               <span class="formula">σ(s)·(c − μ(c)) / σ(c) + μ(s)</span>.</p>
+        </div>
+        <div class="card">
+            <h3>3. Blend</h3>
+            <p>Style strength α mixes the result with the original content features:
+               <span class="formula">α·AdaIN + (1 − α)·content</span>.</p>
+        </div>
+        <div class="card">
+            <h3>4. Decode</h3>
+            <p>A decoder network, trained to invert VGG features, turns the blended features back into an image.</p>
+        </div>
+    </div>
+    <p class="notes">
+        Results are generated at the model's working resolution (shorter side {{ processing_size }} px).
+        Uploaded images are deleted right after processing, and results are deleted automatically after one hour.
+    </p>
+</main>
+
+<footer>
+    <div class="wrap">
+        Based on <a href="https://github.com/shradha-khapra/ai-nst-project">shradha-khapra/ai-nst-project</a>
+        (model code and trained decoder).
+        Method: X. Huang and S. Belongie,
+        <a href="https://arxiv.org/abs/1703.06868">“Arbitrary Style Transfer in Real-time with Adaptive Instance Normalization”</a>, ICCV 2017.
+    </div>
+</footer>
+
+<script>
+(() => {
+    const MAX_BYTES = {{ max_upload_mb }} * 1024 * 1024;
+    const ALLOWED_TYPES = ['image/png', 'image/jpeg'];
+    const ALLOWED_EXT = /\.(png|jpe?g)$/i;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+
+    // What the user picked for each slot: {file, url, label} or {preset, url, label}
+    const selection = { content: null, style: null };
+
+    const $ = (id) => document.getElementById(id);
+    const errorBox = $('error');
+
+    function showError(message) {
+        errorBox.textContent = message;
+        errorBox.classList.add('show');
+    }
+    function clearError() {
+        errorBox.textContent = '';
+        errorBox.classList.remove('show');
+    }
+
+    function formatBytes(bytes) {
+        return bytes > 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + ' MB' : Math.ceil(bytes / 1024) + ' KB';
+    }
+
+    function render(kind) {
+        const item = selection[kind];
+        const drop = $(kind + '-drop');
+        const preview = $(kind + '-preview');
+        drop.classList.toggle('has-image', !!item);
+        if (item) preview.src = item.url; else preview.removeAttribute('src');
+        $(kind + '-name').textContent = item ? item.label : 'No image selected';
+        $(kind + '-clear').hidden = !item;
+        document.querySelectorAll(`.thumb[data-kind="${kind}"]`).forEach((thumb) => {
+            thumb.setAttribute('aria-pressed', String(!!item && item.preset === thumb.dataset.name));
+        });
+    }
+
+    function setSelection(kind, item) {
+        const previous = selection[kind];
+        // Free the old preview's memory, unless the result section is still showing it
+        const shownInResult = previous && [$('result-content').src, $('result-style').src].includes(previous.url);
+        if (previous && previous.file && !shownInResult) URL.revokeObjectURL(previous.url);
+        selection[kind] = item;
+        render(kind);
+    }
+
+    function selectFile(kind, file) {
+        if (!file) return;  // e.g. the file dialog was cancelled; keep any message on screen
+        clearError();
+        const label = kind === 'content' ? 'Content' : 'Style';
+        if (!ALLOWED_TYPES.includes(file.type) && !ALLOWED_EXT.test(file.name)) {
+            showError(`${label} image: "${file.name}" is not a PNG or JPG image.`);
+            return;
+        }
+        if (file.size > MAX_BYTES) {
+            showError(`${label} image is ${formatBytes(file.size)}. The limit is {{ max_upload_mb }} MB.`);
+            return;
+        }
+        setSelection(kind, { file, url: URL.createObjectURL(file), label: `${file.name} · ${formatBytes(file.size)}` });
+    }
+
+    ['content', 'style'].forEach((kind) => {
+        const input = $(kind + '-input');
+        const drop = $(kind + '-drop');
+
+        input.addEventListener('change', () => {
+            selectFile(kind, input.files[0]);
+            input.value = '';  // allow choosing the same file again
+        });
+        $(kind + '-clear').addEventListener('click', () => setSelection(kind, null));
+
+        ['dragenter', 'dragover'].forEach((type) => drop.addEventListener(type, (event) => {
+            event.preventDefault();
+            drop.classList.add('dragover');
+        }));
+        ['dragleave', 'drop'].forEach((type) => drop.addEventListener(type, () => drop.classList.remove('dragover')));
+        drop.addEventListener('drop', (event) => {
+            event.preventDefault();
+            selectFile(kind, event.dataTransfer.files[0]);
+        });
+    });
+
+    document.querySelectorAll('.thumb').forEach((thumb) => {
+        thumb.addEventListener('click', () => {
+            clearError();
+            const { kind, name } = thumb.dataset;
+            setSelection(kind, {
+                preset: name,
+                url: `/presets/${kind}/${encodeURIComponent(name)}`,
+                label: `Sample: ${thumb.title}`,
+            });
+        });
+    });
+
+    const alpha = $('alpha');
+    const alphaValue = $('alpha-value');
+    const updateAlpha = () => { alphaValue.textContent = Number(alpha.value).toFixed(2); };
+    alpha.addEventListener('input', updateAlpha);
+    updateAlpha();
+
+    const form = $('studio');
+    const button = $('generate');
+    const status = $('status');
+
+    function setBusy(busy) {
+        button.disabled = busy;
+        button.classList.toggle('busy', busy);
+        $('generate-label').textContent = busy ? 'Generating…' : 'Generate Style Transfer';
+    }
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        clearError();
+
+        const missing = ['content', 'style'].filter((kind) => !selection[kind]);
+        if (missing.length) {
+            showError(missing.map((kind) => `Please upload a ${kind} image or choose a sample.`).join(' '));
+            return;
+        }
+        const totalBytes = ['content', 'style'].reduce((sum, kind) => sum + (selection[kind].file ? selection[kind].file.size : 0), 0);
+        if (totalBytes > MAX_BYTES) {
+            showError(`Together the two uploads are ${formatBytes(totalBytes)}. The total limit is {{ max_upload_mb }} MB.`);
+            return;
+        }
+
+        const data = new FormData();
+        for (const kind of ['content', 'style']) {
+            const item = selection[kind];
+            if (item.file) data.append(kind, item.file, item.file.name);
+            else data.append(kind + '_preset', item.preset);
+        }
+        data.append('alpha', alpha.value);
+
+        setBusy(true);
+        const started = performance.now();
+        status.textContent = 'Running the neural network…';
+        const ticker = setInterval(() => {
+            status.textContent = `Running the neural network… ${((performance.now() - started) / 1000).toFixed(0)} s`;
+        }, 1000);
+
+        try {
+            const response = await fetch('/api/stylize', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken },
+                body: data,
+            });
+            let payload = null;
+            try { payload = await response.json(); } catch { /* non-JSON error page */ }
+            if (!response.ok || !payload || payload.error) {
+                throw new Error((payload && payload.error) || `The server returned an error (HTTP ${response.status}).`);
+            }
+            await showResult(payload);
+            status.textContent = '';
+        } catch (error) {
+            status.textContent = '';
+            showError(error instanceof TypeError
+                ? 'Could not reach the server. Make sure the app is still running, then try again.'
+                : error.message);
+        } finally {
+            clearInterval(ticker);
+            setBusy(false);
+        }
+    });
+
+    function loadImage(img, src) {
+        return new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = () => reject(new Error('The result image could not be loaded.'));
+            img.src = src;
+        });
+    }
+
+    async function showResult(payload) {
+        $('result-content').src = selection.content.url;
+        $('result-style').src = selection.style.url;
+        await loadImage($('result-output'), payload.result_url);
+        $('download').href = payload.download_url;
+        $('result-meta').innerHTML =
+            `<b>Done</b> · ${payload.width}×${payload.height} px · style strength ${Number(payload.alpha).toFixed(2)}` +
+            ` · model inference ${payload.seconds.toFixed(2)} s on ${payload.device}`;
+        const result = $('result');
+        result.classList.add('show');
+        result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+})();
+</script>
+</body>
+</html>
